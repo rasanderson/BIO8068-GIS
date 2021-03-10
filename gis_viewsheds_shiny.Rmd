@@ -1,0 +1,33 @@
+---
+title: "Interactive visualisation of environmental data in decision support systems"
+subtitle: "BIO8068 Data visualisation in Ecology"
+output:
+  word_document:
+    reference_docx: word_template.docx
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Introduction
+You can use R to undertake many, but not all, of the most common GIS spatial analyses that you may encounter. This allows you to integrate your R code into shiny web-hosted applications, so that as well as simply displaying spatial data, you can start to develop something analogous to a **decision support system** or DSS. Originally DSS had to be hosted on dedicated computer clusters, and required their own unique interface. Now however they can be hosted on web-servers, making them more accessible. Key design decisions remain:
+
+* Who is the end-user? Typically for a DSS the end-user is some sort of policy-maker, or decision-maker. Think back to your windfarm assignment in BIO8069.
+* Who makes the final decision? The final decision as to where to place a windfarm will be made by elected councillors, advised by council planning officials, in consultation with environmental agencies.
+* Who has access to the DSS? Council officials will receive reports and advice from private environmental consultancy companies, possibly hired by the windfarm developers. Representations will also be made by conservation bodies, local residents' associations etc. Will they have access to the DSS?
+* What data is in the DSS? Typically DSS contain a mixture of geographical, environmental, economic and social data. However, as these are drawn from different data sources they can be challenging to keep updated, or at the appropriate spatial scale.
+* What will the DSS be able to model and predict? I have been involved in DSS where economists, ecologists and hydrologists all had to collaborate to construct the underlying models. Each discipline had its own assumptions, and unexpected incompatibilities, especially with regard to spatial and temporal scale, were constant challenges. All models are simplifications of reality. The DSS should be sufficiently constrained so as not to make predictions outside of its realistic limits of operation.
+* How will DSS outputs be visualised? This is of critical importance. Graphical displays are easier to understand, but also easier to mis-interpret.
+
+In this practical we will focus on some of the key geospatial tools you will find useful for building a DSS. Note that when you come to doing your assignment, you are definitely **not** expected to incorporate all these GIS tools into your simple DSS. Rather, it is to give you an understanding of some of the commonly used GIS analyses, such as those found in ArcGIS Toolbox, within R. In particular:
+
+* raster vs vector conversion
+* buffering
+* clipping
+* GIS raster overlay (equivalent to Raster Calculator)
+
+Most of these steps are described very clearly in <https://geocompr.robinlovelace.net/index.html>  Ironically, one key facility, common to all GIS (ArcGIS, QGIS, GRASS GIS) is not available in R, and that is Viewshed Analysis. I have therefore written a function for you to undertake this task, should you wish to implement it. To make it easier for you to understand the connections between GIS and creating a simple DSS, we'll use the "Working with Elevation Data" practical from BIO8069 as a template. This has the advantage that you will be familiar with all the datasets, and it is simply understanding the implementation in R that matters. I have exported the relevant files for you in a format accessible by R.
+
