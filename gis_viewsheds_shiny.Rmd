@@ -10,6 +10,10 @@ output:
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+options("rgdal_show_exportToProj4_warnings"="none")
+library(sf)
+library(raster)
+library(mapview)
 ```
 
 # Introduction
@@ -29,5 +33,65 @@ In this practical we will focus on some of the key geospatial tools you will fin
 * clipping
 * GIS raster overlay (equivalent to Raster Calculator)
 
-Most of these steps are described very clearly in <https://geocompr.robinlovelace.net/index.html>  Ironically, one key facility, common to all GIS (ArcGIS, QGIS, GRASS GIS) is not available in R, and that is Viewshed Analysis. I have therefore written a function for you to undertake this task, should you wish to implement it. To make it easier for you to understand the connections between GIS and creating a simple DSS, we'll use the "Working with Elevation Data" practical from BIO8069 as a template. This has the advantage that you will be familiar with all the datasets, and it is simply understanding the implementation in R that matters. I have exported the relevant files for you in a format accessible by R.
+Most of these steps are described very clearly in <https://geocompr.robinlovelace.net/index.html>  Ironically, one key facility, common to all GIS (ArcGIS, QGIS, GRASS GIS) is not available in R, and that is Viewshed Analysis. I have therefore written a function for you to undertake this task, should you wish to implement it. To make it easier for you to understand the connections between GIS and creating a simple DSS, we'll use the "Working with Elevation Data" practical from BIO8069 as a template. This has the advantage that you will be familiar with all the datasets, and it is simply understanding the implementation in R that matters. I have exported the relevant files for you in a format accessible by R. The following uses the same section and sub-section numbering and titles as in the BIO8069 practical, to make it easy for you to compare analyses.
+
+# 1. Display of elevation data
+You will display the following information
+
+* **pan50m** - 50m resolution map of elevation in North Pennine hills
+* **se82, se02** - Ordnance Survey backdrop rasters. We don't need these but will use leaflet instead.
+* **settlements** - vector (polygon) map of urban areas
+* **wind_turbines** - the viewshed function I have created is more limited than the one in ArcGIS, so we will adapt this map accordingly.
+
+## 1.1 Display of elevation data - contours and shading
+The original backdrop map was Ordnance Survey. For simplicity and speed in R, we can use the `mapview` package to visualise the data in RStudio, and it is easy to adapt these for `leaflet` if you want finer-grained control. Remember that `mapview` assumes your data will be in **latitude-longitude** format, EPSG 4326, whereas when working with your data to calculate distances etc. you will work with Ordnance Survey EPSG 27700. This is a bit irritating, as you will have to convert to latitude longitude for a **dynamic** display. If you are happy with a **static** display then Ordnance Survey is fine.
+
+Begin by loading creating a new RStudio project for this practical. Within the project folder, create a subfolder to store the GIS data that you are going to import into R. I am calling mine `gis_data`. The data are on Canvas as a zip file for download.
+
+Load the relevant libraries as shown below. The rather weird `options` line is to suppress warnings about `ellipsoid discarded` or `showSRID`. These warnings have started to be displayed in the last 12 months due to upgrades to the geospatial system in R, which makes it more accurate, but not all packages are synchronised. However, it does not affect the functioning.
+
+```{r, eval=FALSE}
+options("rgdal_show_exportToProj4_warnings"="none")
+library(sf)
+library(raster)
+library(mapview)
+```
+
+If you receive errors that either library is not available, remember to install them with `install.packages()`. Now import and display the 50m resolution raster elevation map. This is available as a TIF format file (geotiff). Assuming your TIF format files are in `gis_data` now load them into R:
+
+```{r}
+# Import raster elevation data Ordnance Survey projection
+pan50m <- raster("gis_data/pan50m.tif")
+plot(pan50m)
+
+# You will notice that the default colours are the wrong way round, so we can
+# use the terrain.colors option to set low elevation to green, high to brown, 
+# with 30 colour categories
+plot(pan50m, col=terrain.colors(30))
+```
+
+This provides a static map, using the OS projection system (note the coordinates on the horizontal and vertical axes) of the elevation in the North Pennines between Burnley and Bradford. To create a dynamic map that you can overlay onto several different baselayers, remember to convert to latitude-longitude first.
+
+```{r}
+ll_crs <- CRS("+init=epsg:4326")  # 4326 is the code for latitude longitude
+pan50m_ll <- projectRaster(pan50m, crs=ll_crs)
+mapview(pan50m_ll)
+```
+
+As maps created with `mapview` you can zoom and pan your map, display or hide the elevation data, show a backdrop with satellite, Open StreetMap etc. Finally, let's see how easy it is to create a contour map from your dem using `rasterToContour`. I've pushed the output through `st_as_sf()` to convert it from `sp` format to `sf` vector format, as the latter is becoming more widely used in R.
+
+```{r}
+pan_contours <- rasterToContour(pan50m) %>% st_as_sf()
+plot(pan50m)
+plot(pan_contours, add=TRUE)
+```
+
+If you want to be really fancy, it is relatively straightforward to create a hillshade map from elevation data, which can also provide an attractive visualisation that highlights the structure of the elevation as if caught by sunlight.:
+
+```{r}
+hs = hillShade(slope = terrain(pan50m, "slope"), aspect = terrain(pan50m, "aspect"))
+plot(hs, col = gray(0:100 / 100), legend = FALSE)
+# overlay with DEM
+plot(pan50m, col = terrain.colors(25), alpha = 0.5, add = TRUE)
+```
 
