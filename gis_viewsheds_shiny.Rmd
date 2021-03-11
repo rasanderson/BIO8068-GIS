@@ -78,15 +78,7 @@ pan50m_ll <- projectRaster(pan50m, crs=ll_crs)
 mapview(pan50m_ll)
 ```
 
-As maps created with `mapview` you can zoom and pan your map, display or hide the elevation data, show a backdrop with satellite, Open StreetMap etc. Finally, let's see how easy it is to create a contour map from your dem using `rasterToContour`. I've pushed the output through `st_as_sf()` to convert it from `sp` format to `sf` vector format, as the latter is becoming more widely used in R.
-
-```{r}
-pan_contours <- rasterToContour(pan50m) %>% st_as_sf()
-plot(pan50m)
-plot(pan_contours, add=TRUE)
-```
-
-If you want to be really fancy, it is relatively straightforward to create a hillshade map from elevation data, which can also provide an attractive visualisation that highlights the structure of the elevation as if caught by sunlight.:
+As maps created with `mapview` you can zoom and pan your map, display or hide the elevation data, show a backdrop with satellite, Open StreetMap etc. If you want to be really fancy, it is relatively straightforward to create a hillshade map from elevation data, which can also provide an attractive visualisation that highlights the structure of the elevation as if caught by sunlight.:
 
 ```{r}
 hs = hillShade(slope = terrain(pan50m, "slope"), aspect = terrain(pan50m, "aspect"))
@@ -94,4 +86,70 @@ plot(hs, col = gray(0:100 / 100), legend = FALSE)
 # overlay with DEM
 plot(pan50m, col = terrain.colors(25), alpha = 0.5, add = TRUE)
 ```
+
+## 1.2 Creation of contours from raster DTM
+It is easy to create a contour map from your dem using `rasterToContour`. I've pushed the output through `st_as_sf()` to convert it from `sp` format to `sf` vector format, as the latter is becoming more widely used in R.
+
+```{r}
+pan_contours <- rasterToContour(pan50m) %>% st_as_sf()
+plot(pan50m)
+plot(pan_contours, add=TRUE)
+```
+
+# 2. Add DTM-derived information to site data
+## 2.1 Wind turbines dataset
+We have two wind farms, with turbines at slightly different heights. In ArcGIS the height of the turbine is recorded in OFFSETA, and the height of the human observer in OFFSETB. The turbine data are in the `wind_turbine.shp` shapefiles, which again I am assuming are in your `gis_data` subfolder within your RStudio project. **Note** Although we usually refer to "a shapefile" it is actually a collection of files, with slightly different extensions (.prj, .sbx, .dbf, .shp). When you read the shapefile into RStudio, you only need to give the .shp filename, and it will automatically detect the others.
+
+```{r}
+wind_turbines <- st_read("gis_data/wind_turbines.shp")
+print(wind_turbines)
+plot(pan50m)
+plot(wind_turbines)
+```
+
+As you have imported the data using `st_read` the `wind_turbines` object is of class `sf`, which gives a convenient display if printed in the R Console, showing both the coordinate reference system (Ordnance Survey GB) and the first 10 records, including OFFSETA and OFFSETB. If you wish, use `st_transform(wind_turbines, 4326)` to create a latitude-longitude version of your windfarm data, and view it interactively in `mapview`.
+
+## 2.3 Calculate slope and 2.4 Calculate aspect
+To create a slope and aspect raster maps the `terrain` function can be used. This is quite straightforward to implement in R. By default it calculates both slope and aspect in radians, so for consistency with ArcGIS I've added `unit="degrees"`. The interpretation of the aspect values is identical to ArcGIS, i.e. values near 350, 360, 0, 5 degrees are north-facing, around 90 degrees east-facing etc.
+
+```{r, eval=FALSE}
+dem_slope  <- terrain(pan50m, unit="degrees") # defaults to slope
+dem_aspect <- terrain(pan50m, opt="aspect", unit="degrees")
+plot(dem_slope)
+plot(dem_aspect)
+```
+
+After enduring the sluggishness of ArcGIS, you might be pleasantly surprised by how quickly some of these commands run!
+
+## 2.4 Add slope and aspect values to wind turbines attributes
+Strictly-speaking this isn't essential to calculate viewsheds, but I've included it here as it is straightforward in R should you require this type of facility. Basically, you're going to transfer some of the information from the `dem_slope` and `dem_aspect` maps you've just created into two new columns in your `wind_turbines` map, using the `extract` function. This simply creates a list of the extracted values at each wind turbine, and we can assign this to a new column using the `wind_turbines$slope <-` or `wind_turbines$aspect <-`
+
+```{r, eval=FALSE}
+wind_turbines$slope <- extract(dem_slope, wind_turbines)
+wind_turbines$aspect <- extract(dem_slope, wind_turbines)
+```
+
+Print the first 10 rows of `wind_turbines` in the RStudio Console window, and you will see the two additional columns. If you want to see e.g. 20 rows, simply issue `print(wind_turbines, n=20)` in the Console.
+
+# 3. Create a viewshed
+Unfortunately none of the spatial packages in R have a viewshed function, therefore I have created one for you, in the file `LOS.R`. Download this file from Canvas and save it in your RStudio project folder. When you add the command
+
+```{r}
+source("LOS.R")
+```
+
+to your script several additional functions will be created, the key one being `viewshed()`. This takes the following arguments:
+
+* `dem = ` The name of the digital elevation map, assumed to be `raster` format.
+* `windfarm = ` The name of the windfarm location, assumed to be `sf` point format. Currently the `viewshed` function only accepts a single point as it would be too slow to run across multiple points. Therefore you will need to pick a single wind-turbine in the centre of each of your two windfarms in this example, and run `viewshed` twice.
+* `h1 = ` The height of the human observer, i.e. OFFSETA. Defaults to 1.75m if not given.
+* `h2 = ` The height of the wind turbine, i.e. OFFSETB. Defaults to 75m if not given.
+* `radius = ` Maximum radius for the viewshed, i.e. RADIUS2. Defaults to NULL if not given.
+* `vector = ` Whether to return results as a points vector output. Defaults to `raster` if not given.
+
+You might be wondering why OFFSETA and OFFSETB are not automatically collected from the `wind_turbines` map. This is partly as coding it would be more complex, but also to give you maximum flexibility when creating a Decision Support System. For example, you might want the end-user to be able to vary the potential height of a turbine (within a range) to determine the effects on the viewshed.
+
+The next steps guide you through creating separate viewsheds for the west (Lancashire) and east (Yorkshire) windfarms, and then merging together. As we will only pick a central point for one of the turbines at each windfarm, the viewshed will not be quite as accurate as that calculated in ArcGIS.
+
+## 3.2
 
