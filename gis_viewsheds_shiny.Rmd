@@ -132,7 +132,8 @@ wind_turbines$aspect <- extract(dem_slope, wind_turbines)
 Print the first 10 rows of `wind_turbines` in the RStudio Console window, and you will see the two additional columns. If you want to see e.g. 20 rows, simply issue `print(wind_turbines, n=20)` in the Console.
 
 # 3. Create a viewshed
-Unfortunately none of the spatial packages in R have a viewshed function, therefore I have created one for you, in the file `LOS.R`. Download this file from Canvas and save it in your RStudio project folder. When you add the command
+## 3.1 Viewshed concept
+Recall that a viewshed map shows you from where in the landscape an object, such as a wind turbine, can be seen. Whilst nearly all GIS have viewshed tools, unfortunately none of the spatial packages in R have a viewshed function, therefore I have created one for you, in the file `LOS.R`. Download this file from Canvas and save it in your RStudio project folder. When you add the command
 
 ```{r}
 source("LOS.R")
@@ -149,9 +150,10 @@ to your script several additional functions will be created, the key one being `
 
 You might be wondering why OFFSETA and OFFSETB are not automatically collected from the `wind_turbines` map. This is partly as coding it would be more complex, but also to give you maximum flexibility when creating a Decision Support System. For example, you might want the end-user to be able to vary the potential height of a turbine (within a range) to determine the effects on the viewshed.
 
+## 3.2 Using the `viewshed` function: separate windfarms
 The next steps guide you through creating separate viewsheds for the west (Lancashire) and east (Yorkshire) windfarms, and then merging together. As we will only pick a central point for one of the turbines at each windfarm, the viewshed will not be quite as accurate as that calculated in ArcGIS.
 
-## 3.2 Viewshed in separate windfarms
+### 3.2.1 Viewshed for western area
 First display the windfarms (as latitude-longitude) in `mapview` and identify the name of a wind-turbine roughly in the middle of the western windfarm:
 
 ```{r, eval=FALSE}
@@ -186,6 +188,7 @@ plot(west_viewshed, add=TRUE, legend=FALSE, col="red")
 
 Due to the changes we have made (single wind turbine, and coarser digital elevation model) the output is not identical to the one from ArcGIS, but it is similar.
 
+### 3.2.2 Viewshed for eastern area
 Now we can repeat the process for the east (Yorkshire) windfarm, which has slightly taller turbines. Again, interactively look at the `wind_turbines_ll` map using `mapview` and select one of the turbines near the middle. This is a bit trickier as they are roughly in two parallel lines, but I've gone for "OM7" (which is record 7) at the Ovenden Moor site in Yorkshire.
 
 ```{r}
@@ -203,7 +206,7 @@ plot(west_viewshed, add=TRUE, legend=FALSE, col="red")
 plot(east_viewshed, add=TRUE, legend=FALSE, col="blue")
 ```
 
-## 3.3 Merge East and West viewsheds
+### 3.2.3 Merge East and West viewsheds
 When you create your decision support system you will only need to look at a single wind turbine at a single wind farm, but for completeness, we will now merge the two viewsheds into a single map. Before we can merge them together, however, we have to ensure that they have the same extent. If you plot each one separately, you'll see one is based in Lancashire to the west, the other Yorkshire to the east. So initially, reset their extents to the full original digital elevation map, then merge:
 
 ```{r}
@@ -214,4 +217,75 @@ plot(pan500m, col=terrain.colors(25))
 plot(both_viewshed, legend=FALSE, add=TRUE, col="red")
 ```
 
+## 3.3 Which settlements can see the viewshed?
+Originally this had to be done in 4 stages in ArcGIS, but is actually somewhat simpler in RStudio. We'll begin by importing the map of settlements, as a `simple features` polygon (vector) object:
 
+```{r}
+settlements <- st_read("gis_data/settlements.shp")
+```
+
+Check out the columns in the `settlements` object; if you wish, use `st_transform` with EPSG 4326 to convert to `settlements_ll` so that you can view it interactively via `mapview`.
+
+### 3.3.1 Reclassify viewshed map into one class
+In ArcGIS you were creating a separate viewshed for each turbine; this resulted in multiple classes automatically being created. In RStudio, you have simply created two viewsheds (east and west) then merged them into a single map `both_viewshed` which already contains just one class. Therefore this step is not needed. Should you ever need to reclassify a raster map in R, use the `reclassify` function, which takes a map, and a simple matrix of reclassification codes or ranges.
+
+### 3.3.2 Convert viewshed map into polygon map
+Whilst my `viewshed` function has a vector output option, this is in the form of point data. If you actually want a polygon output, as here, you need to convert the raster to a polygon. We can do this via the `rasterToPolygons` function (watchTheCaptialisation!) but note that this returns an older `sp` object, so we will push it into `st_as_sf` to ensure we have the more modern `sf` object:
+
+```{r, eval=FALSE}
+both_viewshed_poly <- rasterToPolygons(both_viewshed) %>% st_as_sf()
+plot(both_viewshed_poly)
+print(both_viewshed_poly, n=5)
+```
+```{r, echo=FALSE}
+both_viewshed_poly <- rasterToPolygons(both_viewshed) %>% st_as_sf()
+```
+
+If you print out `both_viewshed_poly` you can see that it actually contains over 800 entries. Look closely at the map: each raster cell has been turned into its own polygon, which we do not want. Every entry in the table has the same value in the column headed `layer`.
+
+### 3.3.3 Dissolve viewshed polygons into a single polygon
+There are actually two ways of doing this. First, is to add `dissolve=TRUE` to the `rasterToPolygons` function. However, this requires installation of an additional library, called `rgeos` which sometimes causes problems. If you are able to install `rgeos` then simply use:
+
+```{r, eval=FALSE}
+both_viewshed_poly <- rasterToPolygons(both_viewshed, dissolve=TRUE) %>% st_as_sf()
+plot(both_viewshed_poly)
+print(both_viewshed_poly, n=5)
+```
+
+An alternative is to group and summarise based on the `layer` column, using functions from `dplyr` which you probably already have installed:
+
+```{r}
+both_viewshed_poly <- both_viewshed_poly %>% 
+     dplyr::group_by(layer) %>%
+     dplyr::summarize()
+plot(both_viewshed_poly)
+print(both_viewshed_poly, n=5)
+```
+
+Now you can see there is only one polygon (of type MULTIPOLYGON) with no sub-divisions into small squares within the main map.
+
+### 3.3.4 Clip the settlements map with the dissolved viewshed map
+There are several methods of clipping `sf` data in R, depending on whether you want to keep items inside, outside, both, neither etc. of the pairs of maps. Here you are using the settlements as the original features, and the dissolved viewshed as the equivalent of your "cookie cutter", so you only keep features where both occur:
+
+```{r, eval=FALSE}
+settlements_my_viewshed <- st_intersection(settlements, both_viewshed_poly)
+```
+`Error in geos_op2_geom("intersection", x, y) : st_crs(x) == st_crs(y) is not TRUE`
+
+The error message indicates that the coordinate reference systems are not quite the same, and this can be a problem in complex analyses where you have done several conversions. Print in the RStudio Console information about the `settlements` map and you will see:
+
+`projected CRS:  OSGB 1936 / British National Grid`
+
+However the equivalent line for `both_viewshed_poly` gives:
+
+`CRS:+proj=tmerc +lat_0=49 +lon_0=-2 +k=0.9996012717 +x_0=400000 +y_0=-100000 +ellps=airy +units=m +no_defs`
+
+This is also Ordnance Survey British National Grid, but expressed as WKT (well-known text) format. To get `both_viewshed_poly` to behave, simply push it through `st_transform` with EPSG 27700, and run the `st_intersection` function again:
+
+```{r}
+both_viewshed_poly <- st_transform(both_viewshed_poly, 27700)
+settlements_my_viewshed <- st_intersection(settlements, both_viewshed_poly)
+
+```
+
+Print out the results of your analysis to the RStudio Console, and display the maps - you will see that there are only a tiny number of settlements within 5 km of the windfarms. This probably was one of the reasons why these two sites were chosen, so that visual impact is minimal. If you wish, convert your `settlements_my_viewshed` map to a latitude-longitude version, and overlay in `mapview` for interactive display.
