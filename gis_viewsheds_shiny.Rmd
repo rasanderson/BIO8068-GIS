@@ -289,3 +289,89 @@ settlements_my_viewshed <- st_intersection(settlements, both_viewshed_poly)
 ```
 
 Print out the results of your analysis to the RStudio Console, and display the maps - you will see that there are only a tiny number of settlements within 5 km of the windfarms. This probably was one of the reasons why these two sites were chosen, so that visual impact is minimal. If you wish, convert your `settlements_my_viewshed` map to a latitude-longitude version, and overlay in `mapview` for interactive display.
+
+# A walkthrough example of the `viewshed` function in a Shiny app
+This can be done by using the `observeEvent()` function and getting it to look for a `click` event. The syntax is a little strange, in that if your `leaflet` map is called `map`, the `observeEvent` will look for something called `map_click`. It is easiest to store the results of `map_click` in another R object, so that you can check the coordinates. I have created a very simple Shiny app which you are free to adapt and modify. This is available on Canvas to download, and can also be viewed at <https://naturalandenvironmentalscience.shinyapps.io/viewshed/> As you can see, it is a very simple app (no explanatory text!). You merely click on the map, and after about 15 seconds the viewshed is displayed.
+
+Whilst I have added comments to the `app.R` script for this Shiny app, the following explains some of its features in more detail:
+
+```{r, eval=FALSE}
+library(shiny)
+library(sf)
+library(raster)
+library(leaflet)
+library(leafem)
+library(rgdal)
+source("LOS.R")
+```
+
+Quite a lot of libraries are required, namely `shiny`, `sf` and `raster` as you would expect. As the maps will be shown interactively to allow pan and zoom, both `leaflet` and `leafem` are needed. The `rgdal` library needs to be explicitly added for successful deployment onto the ShinyApps.io webserver. Finally, the last line of the startup includes a `source()` call to the `LOS.R` script, to provide access to the `viewshed` and ancilliary functions. The `LOS.R` script is in the same folder as the main `app.R` script.
+
+```{r, eval=FALSE}
+pan50m <- raster("www/pan50m.tif")
+pan500m <- aggregate(pan50m, fact=5) # aggregate to 500m grid for speed
+ll_crs <- CRS("+init=epsg:4326")
+pan50m_ll <- projectRaster(pan50m, crs=ll_crs)
+```
+
+These 4 lines read in the TIF file containing the elevation, make it a coarser resolution of 500m to speed things up, and reprojects the 50m version to latitude longitude which is required by `leaflet`. Whilst the higher resolution 50m lat-lon version will be displayed onscreen for the user, the coarser 500m resolution will be used for calculations. The reprojection to EPSG 4326 is latitude longitude, which we store in `ll_crs` for re-use later. Notice that the TIF file (and associated other files) are stored in the `www` subfolder below the actual `app.R` and `LOS.R` scripts.
+
+```{r, eval=FALSE}
+ui <- fluidPage(
+    leafletOutput(outputId = "map")
+)
+```
+
+The user-interface `ui` function is tiny, and all we have specfied is a `leaflet` output, which we have named `map`. Later on, you'll see reference to `map_click`; if you decided to give the `ui` an `outputID = "elevation")` then later you would need to change the code to `elevation_click` etc. All the next code is within the `server` function:
+
+```{r, eval=FALSE}
+    output$map <- renderLeaflet({
+        leaflet() %>%
+            setView(lng = -2, lat=53.75, zoom=11) %>%
+            addRasterImage(pan50m_ll, colors=terrain.colors(25))
+    })
+```
+
+This sets up `leaflet` map to be on roughly the right area (North Pennines) and then adds the elevation map with terrain colours. The `zoom` option changes the overall startup zoom when the application first runs. Note that `setView` uses longitude and latitude.
+
+```{r, eval=FALSE}
+    observeEvent(input$map_click, {
+        coord <- input$map_click
+        lng <- coord$lng 
+        lat <- coord$lat
+```
+
+This is the start of a long `observeEvent` section of code, so look at the indentation and brackets to ensure you understand how long it is. It actually finishes on **Line 52** quite near the end of the code. These 4 lines detect when the elevation map has been clicked, grabs the coordinates, and then stores the longitude and latitude in two R variables.
+
+```{r, eval=FALSE}
+        if(length(c(lng,lat))==2){
+```
+
+Another block of indented code begins here. It is just to check that the length of the latitude and longitude is 2 numbers long. When the Shiny app first begins, there is not a latitude and longitude stored (as you haven't clicked the map yet), so this `if` statement avoids error messages.
+
+```{r, eval=FALSE}
+            turbine_pt_ll <- data.frame(lat = lat, lng = lng) %>% 
+                st_as_sf(coords = c("lng", "lat")) %>% 
+                st_set_crs(4326)
+            turbine_pt_os <- st_transform(turbine_pt_ll, crs=27700)
+            turbine_pt_os <- st_geometry(turbine_pt_os)[[1]] # Only want geometry
+```
+
+These lines get everything ready for calculating the viewshed, by storing the latitude and longitude in a `sf` points object, converting it to Ordnance Survey, and extracting the geometry. The first three lines creates your turbine mast at latitude longitude (4326), then `st_transform` converts to OS. The last line just gets the coordinates via `st_geometry`, as my `viewshed` function is very simple in what it expects.
+
+```{r, eval=FALSE}
+            viewshed_5km_os <- viewshed(dem=pan500m, windfarm=turbine_pt_os,
+                                        h1=1.5, h2=50, radius=5000)
+            viewshed_5km_ll <- projectRaster(viewshed_5km_os, crs=ll_crs)
+```
+
+Now it is simply a case of calling the `viewshed` function, remembering to use `pan500m` and not `pan50m` as the latter would take 15 minutes to run, setting it to 5 km radius, 50m turbine height and 1.5m viewer. We have to re-project back to latitude-longitude for display of the results in `leaflet`.
+
+```{r, eval=FALSE}
+            leafletProxy("map") %>% 
+                addRasterImage(viewshed_5km_ll, color="red")
+```
+
+Now we can add our viewshed onto the original map. The `leafletProxy` function is useful in that the original map is not redrawn, so you can click multiple times to see different viewsheds on the same map.
+
+Obviously this is very simple, and a better version would allow you to choose the radius of the viewshed, height of the turbine, include explanatory text for the user etc.
