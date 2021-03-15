@@ -4,6 +4,7 @@ library(sf)
 library(raster)
 library(leaflet)
 library(leafem)
+library(rgdal)
 source("LOS.R")
 
 pan50m <- raster("www/pan50m.tif")
