@@ -50,32 +50,34 @@ library(raster)
 library(leaflet)
 library(leafem)
 
-pan50m <- raster("gis_data/pan50m.tif")
+pan50m <- raster("www/pan50m.tif")
 ll_crs <- CRS("+init=epsg:4326")
 pan50m_ll <- projectRaster(pan50m, crs=ll_crs)
 
 ui <- fluidPage(
-    leaflet() %>% 
-        addTiles(group = "OSM (default)") %>% 
-        addProviderTiles(providers$Esri.WorldImagery, group = "Satellite") %>% 
-        addRasterImage(pan50m_ll, colors=terrain.colors(25), group = "Elevation North Pennines") %>% 
-        addLayersControl(
-            baseGroups = c("OSM (default)", "Satellite"), 
-            overlayGroups = "Elevation North Pennines",
-            options = layersControlOptions(collapsed = FALSE)
-        )
+    leafletOutput(outputId = "pan50m_ll_map")
 )
     
 server <- function(input, output, session){
-    map = createLeafletMap(session, 'map')
+    output$pan50m_ll_map <- renderLeaflet({
+        leaflet() %>% 
+        addTiles(group = "OSM (default)") %>%
+            addProviderTiles(providers$Esri.WorldImagery, group = "Satellite") %>%
+            addRasterImage(pan50m_ll, colors=terrain.colors(25), group = "Elevation North Pennines") %>%
+            addLayersControl(
+                baseGroups = c("OSM (default)", "Satellite"),
+                overlayGroups = "Elevation North Pennines",
+                options = layersControlOptions(collapsed = FALSE)
+            )
+    })
     
     observe({
-        click<-input$map_click
-        if(is.null(click))
-            return()
-        text<-paste("Lattitude ", click$lat, "Longtitude ", click$lng)
-        map$showPopup( click$lat, click$lng, text)
+        coord <- input$pan50m_ll_map_click
+        lng <- coord["lng"][[1]]
+        lat <- coord["lat"][[1]]
+        cat(file=stderr(), lat, " ", lng, "\n")
     })
+    
 }
 
 
