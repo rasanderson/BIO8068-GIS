@@ -2,9 +2,9 @@
 title: "Interactive visualisation of environmental data in decision support systems"
 subtitle: "BIO8068 Data visualisation in Ecology"
 output:
+  html_document: default
   word_document:
     reference_docx: word_template.docx
-  html_document: default
   pdf_document: default
 ---
 
