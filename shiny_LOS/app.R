@@ -7,8 +7,11 @@ library(leafem)
 library(rgdal)
 source("LOS.R")
 
-pan50m <- raster("www/pan50m.tif")
-pan500m <- aggregate(pan50m, fact=5) # aggregate to 500m grid for speed
+pan50m <- raster("www/elevation.tif")
+pan500m <- aggregate(pan50m, fact=10) # aggregate to 500m grid for speed
+
+pan500m[is.na(pan500m[])] <- 1
+
 ll_crs <- CRS("+init=epsg:4326")
 pan50m_ll <- projectRaster(pan50m, crs=ll_crs)
 
@@ -20,7 +23,7 @@ server <- function(input, output, session){
     # Display basemap of terrain
     output$map <- renderLeaflet({
         leaflet() %>%
-            setView(lng = -2, lat=53.75, zoom=11) %>%
+            setView(lng = -3.0886, lat=54.4609, zoom=9) %>%
             addRasterImage(pan50m_ll, colors=terrain.colors(25))
     })
     
